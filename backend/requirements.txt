@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+livekit
+python-dotenv
+groq
+twilio
