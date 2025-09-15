@@ -67,6 +67,4 @@ npm install
 npm run dev
 ```
 
-## Demo Recording
 
-A demo recording of the application can be found at [link_to_your_loom_recording].
