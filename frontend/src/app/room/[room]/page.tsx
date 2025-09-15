@@ -4,11 +4,25 @@ import {
   LiveKitRoom,
   VideoConference,
   useRoomContext,
+  useDataChannel,
 } from '@livekit/components-react';
 import '@livekit/components-styles';
-import { Room, RoomEvent } from 'livekit-client';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+
+// This component handles the data channel messages for moving rooms.
+function DataChannelHandler({ setRoomName, setToken }: { setRoomName: (room: string) => void, setToken: (token: string) => void }) {
+  const roomContext = useRoomContext();
+  useDataChannel("move_room", (msg) => {
+    const { room: newRoomName, token: newToken } = JSON.parse(new TextDecoder().decode(msg.payload));
+    // Disconnect from the current room before updating the state
+    roomContext.disconnect().then(() => {
+      setRoomName(newRoomName);
+      setToken(newToken);
+    });
+  });
+  return null; // This component doesn't render anything
+}
 
 // This is the main component for the room page.
 // It handles the logic for both the caller and the agents.
@@ -19,61 +33,7 @@ function RoomFlow({ params }: { params: { room: string } }) {
   const fromRoom = searchParams.get('from_room');
 
   const room = useRoomContext();
-  const [isWaitingForTransfer, setIsWaitingForTransfer] = useState(false);
   const [transferCompleted, setTransferCompleted] = useState(false);
-
-  // Effect for the caller to listen for transfer events
-  useEffect(() => {
-    const onParticipantDisconnected = (participant: any) => {
-      // If the agent disconnects, the caller starts waiting for a transfer
-      // Guard against a torn-down room object during disconnect
-      if (room && room.participants && room.participants.size === 1 && role !== 'agentA') {
-        console.log('Agent disconnected, starting transfer wait state.');
-        setIsWaitingForTransfer(true);
-      }
-    };
-
-    room.on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
-    return () => {
-      room.off(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
-    };
-  }, [room, role]);
-
-  // Effect to start long-polling when waiting for transfer
-  useEffect(() => {
-    if (isWaitingForTransfer) {
-      const poll = async () => {
-        console.log(`Polling for events in room: ${params.room}`);
-        try {
-          const res = await fetch(
-            `http://localhost:8000/listen_for_events?room_name=${params.room}`
-          );
-          if (res.ok) {
-            const event = await res.json();
-            console.log('Received event:', event);
-            if (event && event.action === 'move' && event.new_room) {
-              console.log(`Received move event, redirecting to ${event.new_room}`);
-              await room.disconnect();
-              window.location.href = `/room/${event.new_room}?identity=${identity}`;
-            } else {
-              console.log('No move event found, polling again...');
-              // If no event, poll again
-              setTimeout(poll, 1000);
-            }
-          } else {
-            console.error('Polling request failed with status:', res.status);
-            // If server error, wait and poll again
-            setTimeout(poll, 5000);
-          }
-        } catch (e) {
-          // If network error, wait and poll again
-          console.error("Polling error:", e);
-          setTimeout(poll, 5000);
-        }
-      };
-      poll();
-    }
-  }, [isWaitingForTransfer, params.room, identity, room]);
 
   const handleInitiateTransfer = async () => {
     if (role === 'agentA') {
@@ -87,15 +47,14 @@ function RoomFlow({ params }: { params: { room: string } }) {
         if (res.ok) {
           const data = await res.json();
           const newRoomName = data.new_room_name;
-          console.log(`Initiated transfer, moving Agent A to ${newRoomName}`);
           await room.disconnect();
           // Pass the original room name to the new room
           window.location.href = `/room/${newRoomName}?identity=${identity}&role=agentA&from_room=${params.room}`;
         } else {
-          console.error("Initiate transfer failed:", res.status, res.statusText);
+          // Handle error silently or with a user-friendly message
         }
       } catch (error) {
-        console.error("Error during initiate transfer:", error);
+        // Handle error silently or with a user-friendly message
       }
     }
   };
@@ -110,13 +69,12 @@ function RoomFlow({ params }: { params: { room: string } }) {
           }
         );
         if (res.ok) {
-          console.log("Successfully triggered caller move.");
           setTransferCompleted(true);
         } else {
-          console.error("Complete transfer failed:", res.status, res.statusText);
+          // Handle error silently or with a user-friendly message
         }
       } catch (error) {
-        console.error("Error during complete transfer:", error);
+        // Handle error silently or with a user-friendly message
       }
     }
   };
@@ -127,20 +85,11 @@ function RoomFlow({ params }: { params: { room: string } }) {
   };
 
   const handleCopyToClipboard = () => {
-    const url = window.location.href.replace('role=agentA', 'role=agentB').replace(`identity=${identity}`, 'identity=agentB');
-    navigator.clipboard.writeText(url);
+    const url = new URL(window.location.href);
+    url.searchParams.set('identity', 'agentB');
+    url.searchParams.set('role', 'agentB');
+    navigator.clipboard.writeText(url.toString());
     alert('Link for Agent B copied to clipboard!');
-  }
-
-  // UI for the caller who is waiting for a transfer
-  if (isWaitingForTransfer) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">Please hold, we are transferring you...</h1>
-        </div>
-      </div>
-    );
   }
 
   // UI for Agent A after completing the transfer
@@ -188,11 +137,13 @@ function RoomFlow({ params }: { params: { room: string } }) {
 export default function RoomPage({ params }: { params: { room: string } }) {
   const searchParams = useSearchParams();
   const identity = searchParams.get('identity');
+  const [roomName, setRoomName] = useState(params.room);
   const [token, setToken] = useState('');
 
   useEffect(() => {
-    if (identity && params.room) {
-      fetch(`http://localhost:8000/token?room=${params.room}&identity=${identity}`,
+    // Only fetch a token if we don't have one
+    if (identity && roomName && !token) {
+      fetch(`http://localhost:8000/token?room=${roomName}&identity=${identity}`,
         {
           method: 'POST',
         }
@@ -200,7 +151,7 @@ export default function RoomPage({ params }: { params: { room: string } }) {
         .then((res) => res.json())
         .then((data) => setToken(data.token));
     }
-  }, [identity, params.room]);
+  }, [identity, roomName, token]);
 
   if (!token) {
     return <div>Getting token...</div>;
@@ -214,7 +165,16 @@ export default function RoomPage({ params }: { params: { room: string } }) {
       video={true}
       data-lk-theme="default"
     >
-      <RoomFlow params={params} />
+      {roomName.startsWith('hold-') ? (
+        <div className="flex items-center justify-center h-screen">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold">Please hold, we are transferring you...</h1>
+          </div>
+        </div>
+      ) : (
+        <RoomFlow params={{ room: roomName }} />
+      )}
+      <DataChannelHandler setRoomName={setRoomName} setToken={setToken} />
     </LiveKitRoom>
   );
 }

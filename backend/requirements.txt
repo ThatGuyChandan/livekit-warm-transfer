@@ -4,3 +4,4 @@ livekit
 python-dotenv
 groq
 twilio
+livekit-api
