@@ -7,7 +7,7 @@ This project is a proof-of-concept application that demonstrates a warm call tra
 *   **LiveKit Integration:** Real-time audio/video communication powered by LiveKit.
 *   **Warm Transfer:** Allows an agent (Agent A) to consult with another agent (Agent B) before transferring a call.
 *   **Hold State:** The caller is placed in a dedicated "hold" room during the transfer.
-*   **LLM Integration:** (Optional) Can be extended to generate call summaries using an LLM like Groq.
+*   **LLM Integration:** Can be extended to generate call summaries using an LLM like Groq.
 *   **Twilio Integration:** (Optional) Can be extended to support transfers to real phone numbers using Twilio.
 
 ## How it Works
