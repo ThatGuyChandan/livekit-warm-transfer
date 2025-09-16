@@ -87,7 +87,4 @@ npm run dev
 ```
 
 
-<<<<<<< HEAD
-A demo recording of the application can be found at [link_to_your_loom_recording].
-=======
->>>>>>> a2a7e51fa8891448cc2e6d384f9242d79623ae3e
+
