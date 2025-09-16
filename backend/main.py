@@ -6,9 +6,11 @@ import os
 import uuid
 import jwt
 import json
-from groq import Groq
+from groq import Groq, RateLimitError, APIStatusError, APIError
+from twilio.base.exceptions import TwilioRestException
 from twilio.rest import Client
 from twilio.twiml.voice_response import VoiceResponse, Start
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -29,6 +31,9 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 app = FastAPI()
+
+class SummarizeRequest(BaseModel):
+    transcript: str
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -136,7 +141,7 @@ async def create_room():
 
 
 @app.post("/summarize")
-async def summarize(transcript: str):
+async def summarize(request: SummarizeRequest):
     try:
         chat_completion = groq_client.chat.completions.create(
             messages=[
@@ -146,13 +151,21 @@ async def summarize(transcript: str):
                 },
                 {
                     "role": "user",
-                    "content": f'Summarize the following call transcript:\n\n{transcript}',
+                    "content": f'Summarize the following call transcript:\n\n{request.transcript}',
                 },
             ],
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
         )
-        return {"summary": chat_completion.choices[0].message.content}
+        summary = chat_completion.choices[0].message.content
+        return {"summary": summary}
+    except RateLimitError as e:
+        raise HTTPException(status_code=429, detail=f"Groq API rate limit exceeded: {e}")
+    except APIStatusError as e:
+        raise HTTPException(status_code=500, detail=f"Groq API status error: {e}")
+    except APIError as e:
+        raise HTTPException(status_code=500, detail=f"Groq API error: {e}")
     except Exception as e:
+        print("Groq API error:", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/dial_agent_b")
@@ -165,6 +178,8 @@ async def dial_agent_b(agent_b_number: str = Query(...), room_name: str = Query(
             method="POST"
         )
         return {"call_sid": call.sid}
+    except TwilioRestException as e:
+        raise HTTPException(status_code=500, detail=f"Twilio API error: {e}")
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=str(e))

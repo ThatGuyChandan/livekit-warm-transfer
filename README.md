@@ -14,6 +14,25 @@ This project is a proof-of-concept application that demonstrates a warm call tra
 
 The warm transfer flow is orchestrated by the Python backend, which manages the LiveKit rooms and participants.
 
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant AgentA as Agent A
+    participant Backend
+    participant AgentB as Agent B
+
+    Caller->>AgentA: Initial Call
+    AgentA->>Backend: Initiate Warm Transfer
+    Backend->>Caller: Move to Hold Room
+    Backend->>AgentA: Create new room for consultation
+    AgentA->>AgentB: Invite to consultation room
+    AgentB->>AgentA: Join consultation room
+    AgentA->>Backend: Transfer Caller
+    Backend->>Caller: Move from Hold Room
+    Backend->>AgentB: Connect Caller
+    AgentA-->>Backend: Disconnect
+```
+
 1.  **Initial Call:** A caller connects with Agent A in a LiveKit room.
 2.  **Initiate Transfer:** Agent A clicks the "Initiate Warm Transfer" button.
 3.  **Hold State:** The backend moves the caller to a dedicated "hold" room.
